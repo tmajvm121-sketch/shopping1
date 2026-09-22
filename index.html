@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>구매 의사결정 시뮬레이터</title>
+<style>
+  :root{
+    --bg:#fdf8f0; --ink:#33291f; --brand:#c96f1e; --brand-soft:#f7e6cf;
+    --line:#e5d8c3; --good:#3e7c4f; --bad:#b8452f; --mid:#b78a2e;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:"Apple SD Gothic Neo","Malgun Gothic","맑은 고딕",sans-serif;
+       background:var(--bg); color:var(--ink); padding:20px; font-size:18px;}
+  .wrap{max-width:720px; margin:0 auto;}
+  h1{font-size:27px; text-align:center; letter-spacing:-0.5px;}
+  .sub{text-align:center; color:#8a7a63; font-size:15px; margin:6px 0 16px;}
+  /* 5단계 진행 표시 */
+  .steps{display:flex; gap:6px; margin-bottom:18px;}
+  .steps span{flex:1; text-align:center; font-size:13px; padding:8px 2px;
+     border-radius:8px; background:#f1e9da; color:#8a7a63; font-weight:700;}
+  .steps span.on{background:var(--brand); color:#fff;}
+  .steps span.done{background:var(--brand-soft); color:var(--brand);}
+  .card{background:#fff; border:1.5px solid var(--line); border-radius:16px;
+        padding:22px; box-shadow:0 4px 0 rgba(201,111,30,.08);}
+  .scene{font-size:20px; line-height:1.6; margin-bottom:18px;}
+  .choice{display:block; width:100%; text-align:left; font-size:18px; line-height:1.5;
+     padding:16px 18px; margin-bottom:12px; border-radius:12px; cursor:pointer;
+     border:2px solid var(--line); background:#fffdf9;}
+  .choice:hover{border-color:var(--brand); background:var(--brand-soft);}
+  /* 결말 */
+  .ending{font-size:24px; font-weight:900; text-align:center; padding:14px;
+          border-radius:12px; margin-bottom:16px;}
+  .e-good{background:#e6f2e9; color:var(--good);}
+  .e-mid{background:#f7efd9; color:var(--mid);}
+  .e-bad{background:#f8e5e0; color:var(--bad);}
+  .story{font-size:18px; line-height:1.7; margin-bottom:18px;}
+  .receipt{border:2px dashed var(--line); border-radius:12px; padding:16px; background:#fffdf9;}
+  .receipt h3{text-align:center; font-size:17px; letter-spacing:4px; color:#8a7a63;
+              border-bottom:2px dashed var(--line); padding-bottom:10px; margin-bottom:10px;}
+  .rrow{display:grid; grid-template-columns:96px 1fr; gap:10px; padding:9px 0;
+        border-bottom:1px dashed var(--line); font-size:16px;}
+  .rrow .step{font-weight:900; color:var(--brand);}
+  .rrow .pick{margin-bottom:3px;}
+  .rrow .cmt{font-size:14.5px;}
+  .cmt.g{color:var(--good);} .cmt.b{color:var(--bad);}
+  .btn{display:block; width:100%; padding:16px; font-size:20px; font-weight:800;
+       border:none; border-radius:12px; background:var(--brand); color:#fff;
+       cursor:pointer; margin-top:16px;}
+  footer{font-size:13px; color:#8a7a63; text-align:center; margin-top:14px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>구매 의사결정 시뮬레이터</h1>
+  <div class="sub">선택에 따라 결말이 달라집니다. 나라면 어떻게 살까?</div>
+  <div class="steps" id="steps"></div>
+  <div class="card" id="card"></div>
+  <footer>등장하는 상품·쇼핑몰·인물은 모두 가상입니다. 선택 내용은 저장·전송되지 않습니다.</footer>
+</div>
+
+<script>
+const STEP_NAMES = ["문제 인식","정보 탐색","대안 평가","구매","구매 후 평가"];
+/* good: 합리적 선택 여부, fatal: 피해로 이어질 수 있는 선택 */
+const STAGES = [
+  { scene:"용돈 3만 원을 모았다. 체육 시간마다 이어폰 줄이 걸리적거려서 <b>무선 이어폰</b>을 사기로 했다. 가장 먼저 무엇을 할까?",
+    options:[
+      {t:"검색해서 맨 위에 뜨는 상품을 바로 산다", good:false,
+       c:"필요한 기준 없이 첫 상품부터 보면 광고에 끌려가기 쉬워요."},
+      {t:"먼저 나에게 필요한 기준(예산·용도·꼭 필요한 기능)을 정한다", good:true,
+       c:"기준을 먼저 세우면 뒤의 모든 선택이 쉬워져요."}
+    ]},
+  { scene:"이제 정보를 모을 차례. 어떤 정보를 믿고 찾아볼까?",
+    options:[
+      {t:"SNS에서 본 '인생템!' 광고 게시물 하나만 보고 결정한다", good:false,
+       c:"판매자가 만든 광고는 장점만 보여 줘요."},
+      {t:"구매자 후기 여러 개와 비교 정보를 함께 찾아본다", good:true,
+       c:"여러 출처를 교차 확인하면 정보의 신뢰도가 높아져요."},
+      {t:"친구가 '그거 좋대'라고 한 말만 믿는다", good:false,
+       c:"한 사람의 말은 근거를 확인할 수 없어요."}
+    ]},
+  { scene:"후보가 3개로 좁혀졌다. 무엇을 기준으로 비교할까?",
+    options:[
+      {t:"무조건 가장 싼 것을 고른다", good:false,
+       c:"가격만 보면 품질·AS에서 손해 볼 수 있어요."},
+      {t:"가격 + 품질(방수·배터리) + AS 여부를 표로 비교한다", good:true,
+       c:"여러 기준을 함께 비교하는 것이 대안 평가의 핵심이에요."}
+    ]},
+  { scene:"드디어 구매! 어디에서 살까?",
+    options:[
+      {t:"공식 판매처(정식 쇼핑몰)에서 산다", good:true,
+       c:"조금 비싸도 교환·환불 규정이 분명해요."},
+      {t:"출처를 알 수 없는 '오늘만 70% 초특가' 링크에서 산다", good:false, fatal:true,
+       c:"출처 불명 판매처는 불량·환불 거부 위험이 커요."}
+    ]},
+  { scene:"이어폰이 도착했다! 상자를 열어 본 뒤, 나는…",
+    options:[
+      {t:"영수증(주문 내역)과 포장을 당분간 보관하고, 사용 소감을 남긴다", good:true,
+       c:"증빙을 남겨야 문제가 생겨도 해결할 수 있어요."},
+      {t:"포장과 주문 내역을 바로 버린다", good:false, fatal:true,
+       c:"증빙이 없으면 교환·환불이 어려워져요."}
+    ]}
+];
+
+let stage = 0;
+const picks = [];
+
+function renderSteps(){
+  document.getElementById('steps').innerHTML = STEP_NAMES.map((n,i)=>{
+    const cls = i < stage ? 'done' : (i === stage ? 'on' : '');
+    return `<span class="${cls}">${i+1}. ${n}</span>`;
+  }).join('');
+}
+
+function renderStage(){
+  renderSteps();
+  const s = STAGES[stage];
+  document.getElementById('card').innerHTML =
+    `<div class="scene">${s.scene}</div>` +
+    s.options.map((o,i)=>`<button class="choice" type="button" onclick="choose(${i})">${o.t}</button>`).join('');
+}
+
+function choose(i){
+  picks.push(STAGES[stage].options[i]);
+  stage++;
+  if(stage < STAGES.length){ renderStage(); }
+  else { renderEnding(); }
+}
+
+function renderEnding(){
+  stage = STAGES.length; renderSteps();
+  const goodCount = picks.filter(p=>p.good).length;
+  const boughtRisky = picks[3] && picks[3].fatal;   // 출처 불명 구매
+  const noProof    = picks[4] && picks[4].fatal;    // 증빙 폐기
+
+  let cls, title, story;
+  if(boughtRisky && noProof){
+    cls='e-bad'; title='😱 피해 발생!';
+    story="초특가 이어폰은 사흘 만에 한쪽 소리가 나오지 않았다. 판매자에게 연락했지만 답이 없고, 주문 내역도 버려서 증명할 방법이 없다. 3만 원이 사라졌다… 이럴 때 어디에 도움을 요청할 수 있을까? (이 단원에서 곧 배웁니다!)";
+  } else if(boughtRisky || noProof || goodCount <= 2){
+    cls='e-mid'; title='😮 후회 구매';
+    story="이어폰은 도착했지만 어딘가 아쉽다. " +
+      (boughtRisky ? "출처가 불분명한 곳에서 사서 불량이 생기면 해결이 막막하다. " : "") +
+      (noProof ? "증빙을 버려서 교환하고 싶어도 방법이 없다. " : "") +
+      "다음 구매에서는 어느 단계를 다르게 해 볼까?";
+  } else {
+    cls='e-good'; title='🎉 만족 구매!';
+    story="기준을 세우고, 정보를 비교하고, 믿을 수 있는 곳에서 샀다. 이어폰은 체육 시간에도 끄떡없고, 혹시 문제가 생겨도 증빙이 있어 든든하다. 합리적인 소비자의 탄생!";
+  }
+
+  const receipt = picks.map((p,i)=>`
+    <div class="rrow">
+      <div class="step">${i+1}. ${STEP_NAMES[i]}</div>
+      <div>
+        <div class="pick">${p.t}</div>
+        <div class="cmt ${p.good?'g':'b'}">${p.good?'✔':'✖'} ${p.c}</div>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('card').innerHTML =
+    `<div class="ending ${cls}">${title}</div>
+     <div class="story">${story}</div>
+     <div class="receipt">
+       <h3>나의 의사결정 영수증</h3>
+       ${receipt}
+     </div>
+     <button class="btn" type="button" onclick="restart()">처음부터 다시 해 보기</button>`;
+}
+
+function restart(){ stage=0; picks.length=0; renderStage(); }
+renderStage();
+</script>
+</body>
+</html>
